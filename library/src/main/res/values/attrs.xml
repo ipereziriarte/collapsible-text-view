@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="CollapsibleTextView">
+        <attr name="ctv_animAlphaStart" format="float"/>
+        <attr name="ctv_animDuration" format="integer"/>
+        <attr name="ctv_bodyText" format="string" />
+        <attr name="ctv_bodyTextColor" format="color"/>
+        <attr name="ctv_bodyTextSize" format="dimension" />
+        <attr name="ctv_collapseIconDrawable" format="reference"/>
+        <attr name="ctv_collapseLabel" format="string"/>
+        <attr name="ctv_expandIconDrawable" format="reference"/>
+        <attr name="ctv_expandCollapseIconTint" format="color"/>
+        <attr name="ctv_expandCollapseLabelColor" format="color"/>
+        <attr name="ctv_expandCollapseLabelTextSize" format="dimension"/>
+        <attr name="ctv_expandLabel" format="string"/>
+        <attr name="ctv_expandLabelText" format="dimension"/>
+        <attr name="ctv_gradientDrawable" format="reference"/>
+        <attr name="ctv_showIcon" format="boolean" />
+        <attr name="ctv_showGradient" format="boolean" />
+        <attr name="ctv_visibleLinesCount" format="integer"/>
+    </declare-styleable>
+</resources>
