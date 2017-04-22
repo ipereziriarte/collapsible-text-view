@@ -8,7 +8,10 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
+import android.support.annotation.ColorInt;
+import android.support.annotation.DimenRes;
 import android.support.annotation.DrawableRes;
+import android.support.annotation.FloatRange;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.graphics.drawable.DrawableCompat;
@@ -28,9 +31,10 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
 
     private static final float DEFAULT_ANIM_ALPHA_START = 0.7f;
     private static final int DEFAULT_ANIM_DURATION = 300;
-    private static final int DEFAULT_COLLAPSED_LINES = 4;
+    private static final int DEFAULT_VISIBLE_LINES = 4;
     private static final float ALPHA_OPAQUE = 1f;
     private static final int ALPHA_TRANSPARENT = 0;
+    public static final int MIN_VISIBLE_LINES = 1;
     private MarginUpdateRunnable marginUpdateRunnable = new MarginUpdateRunnable(this);
 
     //region UI
@@ -63,14 +67,18 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
     private Drawable transitionGradient;
     private boolean showIcon = true;
 
+    @ColorInt
+    private int expandCollapseIconTint;
     //endregion
 
     //region CONFIGURATION
     private int collapsedHeight;
     private int textHeightWithMaxLines;
     private int marginBetweenTextAndBottom;
-    private int collapsedLines;
-    private long animationDuration;
+    private int visibleLineCount;
+    private long animationDurationMillis;
+
+    @FloatRange(from = 0.0, to = 1.0)
     private float animAlphaStart;
     //endregion
 
@@ -119,8 +127,10 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
         if (attrs != null) {
             TypedArray typedArray = getContext().obtainStyledAttributes(attrs, R.styleable.CollapsibleTextView);
             if (typedArray != null) {
-                collapsedLines =
-                    typedArray.getInt(R.styleable.CollapsibleTextView_ctv_visibleLinesCount, DEFAULT_COLLAPSED_LINES);
+                visibleLineCount = Math.max(MIN_VISIBLE_LINES,
+                                            typedArray.getInt(R.styleable.CollapsibleTextView_ctv_visibleLinesCount,
+                                                              DEFAULT_VISIBLE_LINES));
+
                 loadCollapseChangeAnimation(typedArray);
                 loadBodyStyle(typedArray);
                 loadExpandCollapseButtonStyle(typedArray);
@@ -131,10 +141,19 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
     }
 
     private void loadCollapseChangeAnimation(TypedArray typedArray) {
-        animationDuration =
-            (long) typedArray.getInt(R.styleable.CollapsibleTextView_ctv_animDuration, DEFAULT_ANIM_DURATION);
-        animAlphaStart =
-            typedArray.getFloat(R.styleable.CollapsibleTextView_ctv_animAlphaStart, DEFAULT_ANIM_ALPHA_START);
+        animationDurationMillis = Math.max(0, (long) typedArray.getInt(R.styleable.CollapsibleTextView_ctv_animDuration,
+                                                                       DEFAULT_ANIM_DURATION));
+
+        animAlphaStart = sanitizeAlpha(
+            typedArray.getFloat(R.styleable.CollapsibleTextView_ctv_animAlphaStart, DEFAULT_ANIM_ALPHA_START));
+    }
+
+    @FloatRange(from = 0.0, to = 1.0)
+    private float sanitizeAlpha(float rawAlpha) {
+        if (rawAlpha < 0f || rawAlpha > 1f) {
+            return DEFAULT_ANIM_ALPHA_START;
+        }
+        return rawAlpha;
     }
 
     private void loadBodyStyle(TypedArray typedArray) {
@@ -146,7 +165,7 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
 
         final int textSize = typedArray.getDimensionPixelSize(R.styleable.CollapsibleTextView_ctv_bodyTextSize, -1);
         if (textSize != -1) {
-            tvBody.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize);
+            tvBody.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize);
         }
 
         final String text = typedArray.getString(R.styleable.CollapsibleTextView_ctv_bodyText);
@@ -158,8 +177,7 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
     private void loadExpandCollapseButtonStyle(TypedArray typedArray) {
         showIcon = typedArray.getBoolean(R.styleable.CollapsibleTextView_ctv_showIcon, true);
         if (showIcon) {
-            int expandCollapseIconTint =
-                typedArray.getColor(R.styleable.CollapsibleTextView_ctv_expandCollapseIconTint, 0);
+            expandCollapseIconTint = typedArray.getColor(R.styleable.CollapsibleTextView_ctv_expandCollapseIconTint, 0);
             @DrawableRes int expandDrawableRes =
                 typedArray.getResourceId(R.styleable.CollapsibleTextView_ctv_expandIconDrawable, 0);
             @DrawableRes int collapseDrawableRes =
@@ -196,18 +214,20 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
         final int buttonTextSize =
             typedArray.getDimensionPixelSize(R.styleable.CollapsibleTextView_ctv_expandCollapseLabelTextSize, -1);
         if (buttonTextSize != -1) {
-            tvExpand.setTextSize(TypedValue.COMPLEX_UNIT_PX, buttonTextSize);
+            tvExpand.setTextSize(TypedValue.COMPLEX_UNIT_SP, buttonTextSize);
         }
     }
 
     private void loadTransitionStyle(TypedArray typedArray) {
         boolean showGradient = typedArray.getBoolean(R.styleable.CollapsibleTextView_ctv_showGradient, false);
         if (showGradient) {
-            int transitionResourceId = typedArray.getResourceId(R.styleable.CollapsibleTextView_ctv_gradientDrawable, R.drawable.ctv_transition_gradient_white);
+            int transitionResourceId = typedArray.getResourceId(R.styleable.CollapsibleTextView_ctv_gradientDrawable,
+                                                                R.drawable.ctv_transition_gradient_white);
             transitionGradient = AppCompatResources.getDrawable(getContext(), transitionResourceId);
             ivGradient.setImageDrawable(transitionGradient);
         }
     }
+    //endregion
 
     //region LIFE CYCLE
     @Override
@@ -251,7 +271,7 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
         // If text fits in collapsed mode, we are done
-        if (tvBody.getLineCount() <= collapsedLines) {
+        if (tvBody.getLineCount() <= visibleLineCount) {
             return;
         }
 
@@ -262,7 +282,7 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
         setClickable(true);
         if (isCollapsed) {
             // Doesn't fit. Collapse text
-            tvBody.setMaxLines(collapsedLines);
+            tvBody.setMaxLines(visibleLineCount);
             tvExpand.setVisibility(VISIBLE);
             ivGradient.setVisibility(VISIBLE);
         }
@@ -328,11 +348,11 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
             valueAnimatorAlpha = ValueAnimator.ofFloat(animAlphaStart, ALPHA_OPAQUE);
             gradientAnimator = ObjectAnimator.ofFloat(ivGradient, "alpha", ALPHA_OPAQUE, ALPHA_TRANSPARENT);
         }
-        gradientAnimator.setDuration(animationDuration);
+        gradientAnimator.setDuration(animationDurationMillis);
         valueAnimatorAlpha.addUpdateListener(new AlphaAnimatorUpdateListener(tvBody));
         valueAnimatorHeight.addUpdateListener(new HeightAnimatorUpdateListener(this, marginBetweenTextAndBottom));
         AnimatorSet animatorSet = new AnimatorSet();
-        animatorSet.setDuration(animationDuration);
+        animatorSet.setDuration(animationDurationMillis);
         animatorSet.playTogether(valueAnimatorHeight, valueAnimatorAlpha);
         animatorSet.start();
         animatorSet.addListener(new CollapseAnimatorListener(this));
@@ -379,6 +399,87 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
     public boolean isCollapsed() {
         return isCollapsed;
     }
+    //endregion
+
+    //region ATTRIBUTE SETTERS
+    public void setVisibleLineCount(int count) {
+        if (count <= 0) {
+            throw new IllegalArgumentException("Minimum visible lines is 1");
+        }
+
+        visibleLineCount = count;
+    }
+
+    public void setAnimationDuration(long animationLengthMillis) {
+        if (animationLengthMillis < 0) {
+            throw new IllegalArgumentException("Animation duration must be a positive value");
+        }
+
+        animationDurationMillis = animationLengthMillis;
+    }
+
+    public void setAnimationAlphaStart(@FloatRange(from = 0.0, to = 1.0) float alpha) {
+        if (alpha < 0f || alpha > 1f) {
+            throw new IllegalArgumentException("alpha should be in range 0.0, 1.0");
+        }
+        animAlphaStart = alpha;
+    }
+
+    public void setBodyTextColor(@ColorInt int color) {
+        tvBody.setTextColor(color);
+    }
+
+    public void setTextSize(@DimenRes int spSize) {
+        tvBody.setTextSize(TypedValue.COMPLEX_UNIT_SP, spSize);
+    }
+
+    public void shouldShowIcon(boolean shouldShowIcon) {
+        showIcon = shouldShowIcon;
+    }
+
+    public void setExpandCollapseIcons(@DrawableRes int collapseDrawableRes, @DrawableRes int expandDrawableRes,
+                                       @ColorInt int color) {
+        expandCollapseIconTint = color;
+        expandIcon =
+            expandDrawableRes == 0 ? AppCompatResources.getDrawable(getContext(), R.drawable.ctv_icv_arrow_down_24)
+                : AppCompatResources.getDrawable(getContext(), expandDrawableRes);
+        collapseIcon =
+            collapseDrawableRes == 0 ? AppCompatResources.getDrawable(getContext(), R.drawable.ctv_icv_arrow_up_24)
+                : AppCompatResources.getDrawable(getContext(), collapseDrawableRes);
+
+        if (expandCollapseIconTint != 0) {
+            if (expandIcon != null) {
+                Drawable wrappedExpand = DrawableCompat.wrap(expandIcon);
+                DrawableCompat.setTint(wrappedExpand, expandCollapseIconTint);
+            }
+            if (collapseIcon != null) {
+                Drawable wrappedExpand = DrawableCompat.wrap(collapseIcon);
+                DrawableCompat.setTint(wrappedExpand, expandCollapseIconTint);
+            }
+        }
+    }
+
+    public void setViewLessLabel(String label) {
+        viewLessLabel = label;
+    }
+
+    public void setViewMoreLabel(String label) {
+        viewMoreLabel = label;
+    }
+
+    public void setExpandButtonTextColor(@ColorInt int color) {
+        tvExpand.setTextColor(color);
+    }
+
+    public void setExpandButtonTextSize(@DimenRes int textSizeSP) {
+        tvExpand.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSP);
+    }
+
+    public void setTransitionGradient(@DrawableRes int transitionGradientId) {
+        transitionGradient = AppCompatResources.getDrawable(getContext(), transitionGradientId);
+        ivGradient.setImageDrawable(transitionGradient);
+    }
+
     //endregion
 
     //region CALLBACK DECLARATION
