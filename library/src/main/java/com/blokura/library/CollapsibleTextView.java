@@ -479,7 +479,6 @@ public class CollapsibleTextView extends LinearLayout implements View.OnClickLis
         transitionGradient = AppCompatResources.getDrawable(getContext(), transitionGradientId);
         ivGradient.setImageDrawable(transitionGradient);
     }
-
     //endregion
 
     //region CALLBACK DECLARATION
